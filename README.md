@@ -1,1 +1,1 @@
-# Thesis_-DRL-in-Algorithmic-Trading
+# Thesis_DRL-in-Algorithmic-Trading
