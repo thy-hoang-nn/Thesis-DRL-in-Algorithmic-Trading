@@ -18,7 +18,7 @@ The main purpose is to propose an deep reinforcement learning approach for train
 ![image](https://user-images.githubusercontent.com/37342769/160243523-00b377fb-4099-4a9d-83af-78d2a40428c2.png)
 
 ## Result
-This work is proposing a deep reinforcement learning which achieves high performance in both cumulative return risk management, compared to the selected baselines, and also successfully handles two extreme periods of Vietnam market in 2018 and 2020 that is a challenge for the state-of-the-art approaches.
+This work is proposing a deep reinforcement learning which achieves high performance in both cumulative return and risk management, compared to the selected baselines, and also successfully handles two extreme periods of Vietnam market in 2018 and 2020 that is a challenge for the state-of-the-art approaches.
 
 |                       | PPO   |  SAC  |  A2C |  Ensemble |  VN30  |
 |     :---:             | :---: | :---: | :---:|  :---:    |  :---: |
