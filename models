@@ -1,0 +1,102 @@
+from stable_baselines3 import SAC
+#from stable_baselines import ACER
+from stable_baselines3 import PPO
+from stable_baselines3 import A2C
+from stable_baselines3 import DDPG
+from stable_baselines3 import TD3
+
+from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
+from stable_baselines3.common.vec_env import DummyVecEnv
+
+# timesteps: the total number of samples to train on
+# verbose: the verbosity level: 0 none, 1 training information, 2 tensorflow debug
+
+
+def train_A2C(env_train, model_name, timesteps):
+    """A2C model"""
+
+    start = time.time()
+    model = A2C('MlpPolicy', env_train, ent_coef=0.01)
+    model.learn(total_timesteps=timesteps)
+    end = time.time()
+
+    model.save(f"{TRAINED_MODEL_DIR}/{model_name}")
+    print('Training time (A2C): ', (end - start) / 60, ' minutes')
+    return model
+
+
+def train_PPO(env_train, model_name, timesteps):
+    """PPO model"""
+
+    start = time.time()
+    model = PPO('MlpPolicy', env_train, ent_coef=0.01)
+    model.learn(total_timesteps=timesteps)
+    end = time.time()
+
+    model.save(f"{TRAINED_MODEL_DIR}/{model_name}")
+    print('Training time (PPO): ', (end - start) / 60, ' minutes')
+    return model
+
+
+def train_SAC(env_train, model_name, timesteps):
+    """SAC model"""
+
+    start = time.time()
+    model = SAC('MlpPolicy', env_train, batch_size=128, ent_coef='auto_0.1')
+    model.learn(total_timesteps=timesteps)
+    end = time.time()
+
+    model.save(f"{TRAINED_MODEL_DIR}/{model_name}")
+    print('Training time (SAC): ', (end - start) / 60, ' minutes')
+    return model
+
+
+def DRL_prediction(df,
+                   model,
+                   name,
+                   last_state,
+                   iter_num,
+                   unique_trade_date,
+                   rebalance_window,
+                   turbulence_threshold,
+                   initial):
+    ### make a prediction based on trained model###
+
+    # trading env
+    trade_data = data_split(
+        df, start=unique_trade_date[iter_num - rebalance_window], end=unique_trade_date[iter_num])
+    env_trade = DummyVecEnv([lambda: StockEnvTrade(trade_data,
+                                                   turbulence_threshold=turbulence_threshold,
+                                                   initial=initial,
+                                                   previous_state=last_state,
+                                                   model_name=name,
+                                                   iteration=iter_num)])
+    obs_trade = env_trade.reset()
+
+    for i in range(len(trade_data.index.unique())):
+        action, _states = model.predict(obs_trade)
+        obs_trade, rewards, dones, info = env_trade.step(action)
+        if i == (len(trade_data.index.unique()) - 2):
+            # print(env_test.render())
+            last_state = env_trade.render()
+
+    df_last_state = pd.DataFrame({'last_state': last_state})
+    df_last_state.to_csv(
+        '/content/drive/MyDrive/DRL_DataVN_sb3/results/last_state_{}_{}.csv'.format(name, i), index=False)
+    return last_state
+
+
+def DRL_validation(model, test_data, test_env, test_obs) -> None:
+    ###validation process###
+    for i in range(len(test_data.index.unique())):
+        action, _states = model.predict(test_obs)
+        test_obs, rewards, dones, info = test_env.step(action)
+
+
+def get_validation_sharpe(iteration):
+    ###Calculate Sharpe ratio based on validation results###
+    df_total_value = pd.read_csv(
+        '/content/drive/MyDrive/DRL_DataVN_sb3/results/account_value_validation_{}.csv'.format(iteration), index_col=0)
+    sharpe = (4 ** 0.5) * df_total_value['daily_return'].mean() / \
+        df_total_value['daily_return'].std()
+    return sharpe

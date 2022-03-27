@@ -1,0 +1,45 @@
+import pyfolio
+from pyfolio import timeseries
+from copy import deepcopy
+
+
+def get_daily_return(df, value_col_name='account_value'):
+    df = deepcopy(df)
+    df['daily_return'] = df[value_col_name].pct_change(1)
+    df['Date'] = pd.to_datetime(df['Date'])
+    df.set_index('Date', inplace=True, drop=True)
+    return pd.Series(df['daily_return'].values, index=df.index)
+
+
+def convert_daily_return_to_pyfolio(df):
+    strategy_ret = df.copy()
+    #strategy_ret['Date'] = pd.to_datetime(strategy_ret['Date'])
+    strategy_ret.set_index('Date', drop=False, inplace=True)
+    #strategy_ret.index = strategy_ret.index.tz_localize('UTC')
+    del strategy_ret['Date']
+    ts = pd.Series(strategy_ret['daily_return'].values,
+                   index=strategy_ret.index)
+    return ts
+
+
+def backtest_stat(account_value, value_col_name='account_value'):
+    dr_test = get_daily_return(account_value, value_col_name=value_col_name)
+    perf_stats_all = timeseries.perf_stats(returns=dr_test)
+    print(perf_stats_all)
+    return perf_stats_all
+
+
+def get_account_value(model_name):
+    df_account_value = pd.DataFrame()
+    for i in range(rebalance_window+validation_window, len(unique_trade_date)+1, rebalance_window):
+        temp = pd.read_csv(
+            '/content/drive/MyDrive/DRL_DataVN_sb3/results/account_value_trade_{}_{}.csv'.format(model_name, i), index_col=0)
+        df_account_value = df_account_value.append(temp, ignore_index=True)
+    df_account_value = df_account_value.drop_duplicates(
+        subset='Date').reset_index(drop=True)
+    sharpe = (252**0.5)*df_account_value.account_value.pct_change(1).mean() / \
+        df_account_value.account_value.pct_change(1).std()
+    print('Sharpe Ratio: ', sharpe)
+    df_account_value = df_account_value.join(
+        df_trade_date[validation_window:].reset_index(drop=True))
+    return df_account_value

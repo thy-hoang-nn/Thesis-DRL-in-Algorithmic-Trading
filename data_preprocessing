@@ -1,0 +1,156 @@
+from stockstats import StockDataFrame as Sdf
+
+
+def load_dataset(*, file_name: str) -> pd.DataFrame:
+    """
+    load csv dataset from path
+    :return: (df) pandas dataframe
+    """
+    #_data = pd.read_csv(f"{config.DATASET_DIR}/{file_name}")
+    _data = pd.read_csv(file_name, index_col=0)
+    return _data
+
+
+def data_split(df, start, end):
+    """
+    split the dataset into training or testing using date
+    :param data: (df) pandas dataframe, start, end
+    :return: (df) pandas dataframe
+    """
+    data = df[(df.Date >= start) & (df.Date <= end)]
+    data = data.sort_values(['Date', 'Symbol'], ignore_index=True)
+    data.index = data.Date.factorize()[0]
+    return data
+
+
+def add_technical_indicator(df):
+    """
+    calculate technical indicators
+    use stockstats package to add technical inidactors
+    :param data: (df) pandas dataframe
+    :return: (df) pandas dataframe
+    """
+    stock = Sdf.retype(df.copy())
+
+    #stock['close'] = stock['adjust']
+    unique_ticker = stock.symbol.unique()
+
+    macd = pd.DataFrame()
+    rsi = pd.DataFrame()
+    cci = pd.DataFrame()
+    dx = pd.DataFrame()
+    sma = pd.DataFrame()
+    blbu = pd.DataFrame()
+    blbl = pd.DataFrame()
+
+    #temp = stock[stock.Symbol == unique_ticker[0]]['macd']
+    for i in range(len(unique_ticker)):
+        # macd
+        temp_macd = stock[stock.symbol == unique_ticker[i]]['macd']
+        temp_macd = pd.DataFrame(temp_macd)
+        macd = macd.append(temp_macd, ignore_index=True)
+        # rsi
+        temp_rsi = stock[stock.symbol == unique_ticker[i]]['rsi_14']
+        temp_rsi = pd.DataFrame(temp_rsi)
+        rsi = rsi.append(temp_rsi, ignore_index=True)
+
+        # cci
+        temp_cci = stock[stock.symbol == unique_ticker[i]]['cci_14']
+        temp_cci = pd.DataFrame(temp_cci)
+        cci = cci.append(temp_cci, ignore_index=True)
+        # adx
+        temp_dx = stock[stock.symbol == unique_ticker[i]]['dx_14']
+        temp_dx = pd.DataFrame(temp_dx)
+        dx = dx.append(temp_dx, ignore_index=True)
+
+        # sma
+        temp_sma = stock[stock.symbol == unique_ticker[i]]['close_10_sma']
+        temp_sma = pd.DataFrame(temp_sma)
+        sma = sma.append(temp_sma, ignore_index=True)
+
+        # boll up
+        temp_blbu = stock[stock.symbol == unique_ticker[i]]['boll_ub']
+        temp_blbu = pd.DataFrame(temp_blbu)
+        blbu = blbu.append(temp_blbu, ignore_index=True)
+        # boll low
+        temp_blbl = stock[stock.symbol == unique_ticker[i]]['boll_lb']
+        temp_blbl = pd.DataFrame(temp_blbl)
+        blbl = blbl.append(temp_blbl, ignore_index=True)
+
+    df['macd'] = macd
+    df['rsi'] = rsi
+    df['cci'] = cci
+    df['adx'] = dx
+    df['sma'] = sma
+    df['boll_ub'] = blbu
+    df['boll_lb'] = blbl
+
+
+def preprocess_data():
+    """data preprocessing pipeline"""
+
+    df = load_dataset(file_name=TRAINING_DATA_FILE)
+    # get data after 2012/05/21
+    df['Date'] = pd.to_datetime(df['Date'])
+    df = df[df.Date >= "2012-05-21"]
+    # add technical indicators using stockstats
+    df_final = add_technical_indicator(df)
+    # fill the missing values at the beginning and ending
+    df_final.fillna(method='bfill', inplace=True)
+    df_final.fillna(method='ffill', inplace=True)
+    return df_final
+
+
+def calculate_turbulence(data):
+    """calculate turbulence index based on data vn"""
+    # can add other market assets
+    df = data.copy()
+    df_price_pivot = df.pivot(index='Date', columns='Symbol', values='adjust')
+    # use return to calculate turbulence
+    df_price_pivot = df_price_pivot.pct_change()
+    unique_date = df.Date.unique()
+    # start after a year (from 2018-06-04)
+    start = 250
+    turbulence_index = [0]*start
+    #turbulence_index = [0]
+    count = 0
+    for i in range(start, len(unique_date)):
+        current_price = df_price_pivot[df_price_pivot.index == unique_date[i]]
+        #hist_price = df_price_pivot[(df_price_pivot.index < unique_date[i] & df_price_pivot.index >= unique_date[i - 250])]
+        hist_price = df_price_pivot[[n in unique_date[0:i]
+                                     for n in df_price_pivot.index]]
+        # Drop tickers which has number missing values more than the "oldest" ticker
+        filtered_hist_price = hist_price.iloc[hist_price.isna(
+        ).sum().min():].dropna(axis=1)
+        cov_temp = filtered_hist_price.cov()
+        current_temp = current_price[[
+            x for x in filtered_hist_price]] - np.mean(filtered_hist_price, axis=0)
+        temp = current_temp.values.dot(
+            np.linalg.pinv(cov_temp)).dot(current_temp.values.T)
+        if temp > 0:
+            count += 1
+            if count > 2:
+                turbulence_temp = temp[0][0]
+            else:
+                # avoid large outlier because of the calculation just begins
+                turbulence_temp = 0
+        else:
+            turbulence_temp = 0
+        turbulence_index.append(turbulence_temp)
+
+    turbulence_index = pd.DataFrame({'Date': df_price_pivot.index,
+                                     'turbulence': turbulence_index})
+    return turbulence_index
+
+
+def add_turbulence(data):
+    """
+    add turbulence index from a precalculated dataframe
+    :param data: (df) pandas dataframe
+    :return: (df) pandas dataframe
+    """
+    df = data.copy()
+    turbulence_index = calculate_turbulence(df)
+    df = df.merge(turbulence_index, on='Date')
+    df = df.sort_values(['Date', 'Symbol']).reset_index(drop=True)
+    return df
